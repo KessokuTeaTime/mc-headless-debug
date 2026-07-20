@@ -1,0 +1,30 @@
+modLoader = "javafml"
+loaderVersion = "[3,)"
+license = "GPL-3.0-only"
+
+[[mods]]
+modId = "mchd_bridge"
+version = "${version}"
+displayName = "MC Headless Debug Bridge"
+authors = "Kessoku Tea Time"
+description = "Authenticated agent control bridge for Minecraft 26.2."
+
+[features.mchd_bridge]
+javaVersion = "[25,)"
+
+[[dependencies.mchd_bridge]]
+modId = "neoforge"
+type = "required"
+versionRange = "[26.2.0.25-beta,)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.mchd_bridge]]
+modId = "minecraft"
+type = "required"
+versionRange = "[26.2,26.3)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[mixins]]
+config = "mchd-bridge.mixins.json"

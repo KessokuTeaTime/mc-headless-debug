@@ -1,0 +1,38 @@
+{
+  "name": "@mc-headless-debug/adapter-minecraft-java-26.2",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./fabric": {
+      "types": "./dist/fabric.d.ts",
+      "import": "./dist/fabric.js",
+      "default": "./dist/fabric.js"
+    },
+    "./neoforge": {
+      "types": "./dist/neoforge.d.ts",
+      "import": "./dist/neoforge.js",
+      "default": "./dist/neoforge.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bridge"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "build:bridge": "node scripts/build-bridge.mjs",
+    "check": "tsc -b --pretty false",
+    "test": "vitest run src",
+    "prepack": "pnpm build && pnpm build:bridge"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@mc-headless-debug/engine": "workspace:*",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "@types/yauzl": "3.4.0"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "mchd_bridge",
+  "version": "${version}",
+  "name": "MC Headless Debug Bridge",
+  "description": "Authenticated agent control bridge for Minecraft 26.2.",
+  "authors": [
+    "Kessoku Tea Time"
+  ],
+  "license": "GPL-3.0-only",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.mchd.bridge.fabric.MchdBridgeFabric"
+    ]
+  },
+  "mixins": [
+    "mchd-bridge.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "26.2",
+    "java": ">=25"
+  }
+}

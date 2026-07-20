@@ -1,0 +1,105 @@
+name: Bridge Smoke Test
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-smoke:
+    name: Minecraft 26.2 / ${{ matrix.loader }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        loader:
+          - fabric
+          - neoforge
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.15.1 --activate
+      - name: Install headless runtime
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm --filter @mc-headless-debug/adapter-minecraft-java-26.2 build:bridge
+      - name: Configure adapter
+        env:
+          LOADER: ${{ matrix.loader }}
+        run: |
+          mkdir -p artifacts
+          cat > e2e.config.yaml <<EOF
+          schemaVersion: 1
+          projectRoot: .
+          artifacts: artifacts
+          runtime:
+            adapter: minecraft-java/26.2/$LOADER
+            backend: native
+            options:
+              build: false
+              bridgeOnly: true
+          endpoint:
+            host: 127.0.0.1
+            port: 25570
+            tokenFile: .mchd/token
+          adapters:
+            minecraft-java/26.2/fabric: "@mc-headless-debug/adapter-minecraft-java-26.2/fabric"
+            minecraft-java/26.2/neoforge: "@mc-headless-debug/adapter-minecraft-java-26.2/neoforge"
+          EOF
+      - name: Launch and control Minecraft
+        run: |
+          pnpm --filter @mc-headless-debug/cli dev run \
+            --config "$GITHUB_WORKSPACE/e2e.config.yaml" \
+            > artifacts/runtime-${{ matrix.loader }}.log 2>&1 &
+          runtime_pid=$!
+          echo "$runtime_pid" > artifacts/runtime.pid
+          for attempt in $(seq 1 180); do
+            if [ -s .mchd/token ]; then
+              break
+            fi
+            if ! kill -0 "$runtime_pid" 2>/dev/null; then
+              cat artifacts/runtime-${{ matrix.loader }}.log
+              exit 1
+            fi
+            sleep 5
+          done
+          test -s .mchd/token
+          pnpm --filter @mc-headless-debug/cli dev scenario run \
+            "$GITHUB_WORKSPACE/examples/scenarios/bridge-smoke.yaml" \
+            --config "$GITHUB_WORKSPACE/e2e.config.yaml"
+          wait "$runtime_pid"
+      - name: Stop orphaned runtime
+        if: always()
+        run: |
+          if [ -f artifacts/runtime.pid ]; then
+            runtime_pid=$(cat artifacts/runtime.pid)
+            kill "$runtime_pid" 2>/dev/null || true
+          fi
+      - name: Upload bridge artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-smoke-${{ matrix.loader }}
+          if-no-files-found: warn
+          path: |
+            artifacts
+            .mchd/game/screenshots
+            .mchd/game/logs
+            .mchd/game/crash-reports

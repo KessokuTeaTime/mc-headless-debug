@@ -1,0 +1,27 @@
+schemaVersion: 1
+name: Debug an inventory screen
+runtime:
+  adapter: minecraft-java/26.2/fabric
+steps:
+  - name: Enter a reproducible creative world
+    call: world.create
+    with:
+      name: mchd-gui
+      seed: 1
+      gameMode: creative
+  - name: Equip a deterministic hotbar
+    call: command.execute
+    with:
+      command: item replace entity @s hotbar.0 with minecraft:diamond_sword
+  - name: Open inventory
+    call: gui.open
+    with:
+      screen: inventory
+  - name: Inspect widgets
+    call: gui.inspect
+    saveAs: inventory-widgets
+  - name: Capture inventory
+    call: screenshot.capture
+    with:
+      name: inventory
+    saveAs: inventory-screenshot

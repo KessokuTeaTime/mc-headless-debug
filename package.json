@@ -1,0 +1,23 @@
+{
+  "name": "mc-headless-debug",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "pnpm --recursive build",
+    "check": "pnpm --recursive check",
+    "test": "pnpm --recursive test",
+    "dev": "pnpm --filter @mc-headless-debug/cli dev"
+  },
+  "devDependencies": {
+    "@mc-headless-debug/adapter-minecraft-java-26.2": "workspace:*",
+    "@types/node": "24.10.13",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

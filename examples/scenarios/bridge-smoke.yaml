@@ -1,0 +1,55 @@
+schemaVersion: 1
+name: Exercise the Minecraft control bridge
+steps:
+  - name: Create a deterministic world
+    call: world.create
+    with:
+      name: mchd-bridge-smoke
+      seed: "1"
+      gameMode: creative
+      difficulty: peaceful
+      allowCommands: true
+    timeoutMs: 120000
+  - name: Configure the environment
+    call: world.configure
+    with:
+      time: noon
+      weather: clear
+      difficulty: peaceful
+      gamerules:
+        doDaylightCycle: false
+  - name: Move the local player
+    call: player.configure
+    with:
+      position:
+        - 0
+        - 100
+        - 0
+      gameMode: creative
+  - name: Spawn a test entity
+    call: entity.spawn
+    with:
+      type: minecraft:armor_stand
+      position:
+        - 0
+        - 100
+        - 3
+  - name: Query test entities
+    call: entity.query
+    with:
+      type: minecraft:armor_stand
+    saveAs: entities
+  - name: Open the inventory
+    call: gui.open
+    with:
+      screen: inventory
+  - name: Inspect inventory widgets
+    call: gui.inspect
+    saveAs: inventory-widgets
+  - name: Capture the inventory
+    call: screenshot.capture
+    with:
+      name: bridge-smoke-inventory
+    saveAs: inventory-screenshot
+  - name: Stop Minecraft
+    call: runtime.stop

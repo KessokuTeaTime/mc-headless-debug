@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+**/.gradle/
+**/build/
+packages/adapter-minecraft-java-26.2/bridge/
+.mchd/
+artifacts/
+*.tsbuildinfo
+.DS_Store

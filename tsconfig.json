@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/protocol"
+    },
+    {
+      "path": "./packages/engine"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./packages/mcp"
+    }
+  ]
+}

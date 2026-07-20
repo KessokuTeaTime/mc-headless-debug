@@ -1,0 +1,26 @@
+{
+  "name": "@mc-headless-debug/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "mchd-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "check": "tsc -b --pretty false",
+    "test": "vitest run --passWithNoTests",
+    "prepack": "pnpm build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@mc-headless-debug/cli": "workspace:*",
+    "@mc-headless-debug/protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.mchd.bridge",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "CreateWorldScreenInvoker",
+    "MinecraftMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

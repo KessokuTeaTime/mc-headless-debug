@@ -1,0 +1,31 @@
+{
+  "name": "@mc-headless-debug/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "mchd": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "check": "tsc -b --pretty false",
+    "test": "vitest run src",
+    "dev": "tsx src/cli.ts",
+    "prepack": "pnpm build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@mc-headless-debug/engine": "workspace:*",
+    "@mc-headless-debug/protocol": "workspace:*",
+    "commander": "15.0.0",
+    "execa": "10.0.0",
+    "yaml": "2.9.0",
+    "zod": "4.4.3"
+  }
+}
