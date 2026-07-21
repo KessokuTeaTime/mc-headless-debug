@@ -1,5 +1,6 @@
-package dev.mchd.bridge;
+package dev.mchd.bridge.mixin;
 
+import dev.mchd.bridge.MchdBridge;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

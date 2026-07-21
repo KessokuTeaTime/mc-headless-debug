@@ -1,4 +1,4 @@
-package dev.mchd.bridge;
+package dev.mchd.bridge.mixin;
 
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import org.spongepowered.asm.mixin.Mixin;
