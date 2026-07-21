@@ -34,10 +34,6 @@ steps:
         - 0
         - 100
         - 3
-  - name: Wait for client entity synchronization
-    call: wait.ticks
-    with:
-      ticks: 2
   - name: Query test entities
     call: entity.query
     with:
@@ -47,6 +43,10 @@ steps:
     call: gui.open
     with:
       screen: inventory
+  - name: Wait for inventory rendering
+    call: wait.ticks
+    with:
+      ticks: 2
   - name: Inspect inventory widgets
     call: gui.inspect
     saveAs: inventory-widgets

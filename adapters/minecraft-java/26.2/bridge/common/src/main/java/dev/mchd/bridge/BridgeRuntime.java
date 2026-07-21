@@ -102,9 +102,7 @@ final class BridgeRuntime {
 			case "player.get" -> call.result.complete(this.playerState(minecraft));
 			case "player.configure" -> this.configurePlayer(minecraft, call);
 			case "player.input" -> this.controlPlayer(minecraft, call);
-			case "entity.query" -> call.result.complete(
-					this.queryEntities(minecraft, call.params)
-			);
+			case "entity.query" -> this.queryEntities(minecraft, call);
 			case "entity.spawn" -> this.spawnEntity(minecraft, call);
 			case "entity.configure" -> this.configureEntity(minecraft, call);
 			case "entity.remove" -> this.removeEntity(minecraft, call);
@@ -303,26 +301,40 @@ final class BridgeRuntime {
 		return result;
 	}
 
-	private JsonArray queryEntities(Minecraft minecraft, JsonObject params) {
-		if (minecraft.level == null) {
-			throw new BridgeRpcException(-32012, "No world is open");
+	private void queryEntities(Minecraft minecraft, PendingCall call) {
+		MinecraftServer server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			throw new BridgeRpcException(-32012, "No integrated server is running");
 		}
-		String typeFilter = params.has("type") ? params.get("type").getAsString() : null;
-		JsonArray result = new JsonArray();
-		for (Entity entity : minecraft.level.entitiesForRendering()) {
-			String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
-			if (typeFilter != null && !typeFilter.equals(type)) {
-				continue;
+		var playerId = requirePlayer(minecraft).getUUID();
+		String typeFilter = call.params.has("type")
+				? call.params.get("type").getAsString()
+				: null;
+		server.execute(() -> {
+			try {
+				ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+				if (player == null) {
+					throw new BridgeRpcException(-32012, "No server player is available");
+				}
+				JsonArray result = new JsonArray();
+				for (Entity entity : player.level().getAllEntities()) {
+					String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+					if (typeFilter != null && !typeFilter.equals(type)) {
+						continue;
+					}
+					JsonObject value = new JsonObject();
+					value.addProperty("uuid", entity.getUUID().toString());
+					value.addProperty("type", type);
+					value.addProperty("x", entity.getX());
+					value.addProperty("y", entity.getY());
+					value.addProperty("z", entity.getZ());
+					result.add(value);
+				}
+				call.result.complete(result);
+			} catch (RuntimeException exception) {
+				call.result.completeExceptionally(exception);
 			}
-			JsonObject value = new JsonObject();
-			value.addProperty("uuid", entity.getUUID().toString());
-			value.addProperty("type", type);
-			value.addProperty("x", entity.getX());
-			value.addProperty("y", entity.getY());
-			value.addProperty("z", entity.getZ());
-			result.add(value);
-		}
-		return result;
+		});
 	}
 
 	private void spawnEntity(Minecraft minecraft, PendingCall call) {
