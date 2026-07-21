@@ -38,6 +38,9 @@ steps:
     call: wait.ticks
     with:
       ticks: 2
+  - name: Query all server entities
+    call: entity.query
+    saveAs: all-entities
   - name: Query test entities
     call: entity.query
     with:
