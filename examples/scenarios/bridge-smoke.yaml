@@ -17,7 +17,7 @@ steps:
       weather: clear
       difficulty: peaceful
       gamerules:
-        "minecraft:do_daylight_cycle": false
+        "minecraft:advance_time": false
   - name: Move the local player
     call: player.configure
     with:
