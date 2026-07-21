@@ -25,6 +25,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.entity.EntityTypeTest;
 import org.jspecify.annotations.Nullable;
 
 import java.io.File;
@@ -313,7 +314,10 @@ final class BridgeRuntime {
 			try {
 				JsonArray result = new JsonArray();
 				for (var level : server.getAllLevels()) {
-					for (Entity entity : level.getAllEntities()) {
+					for (Entity entity : level.getEntities(
+							EntityTypeTest.forClass(Entity.class),
+							entity -> true
+					)) {
 						String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
 						if (typeFilter != null && !typeFilter.equals(type)) {
 							continue;
