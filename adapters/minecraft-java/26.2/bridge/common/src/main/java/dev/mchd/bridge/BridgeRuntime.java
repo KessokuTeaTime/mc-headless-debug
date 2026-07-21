@@ -219,7 +219,12 @@ final class BridgeRuntime {
 			commands.add("weather " + call.params.get("weather").getAsString());
 		}
 		if (call.params.has("difficulty")) {
-			commands.add("difficulty " + call.params.get("difficulty").getAsString());
+			String difficulty = call.params.get("difficulty").getAsString();
+			MinecraftServer server = minecraft.getSingleplayerServer();
+			if (server == null || !server.getWorldData().getDifficulty().name()
+					.equalsIgnoreCase(difficulty)) {
+				commands.add("difficulty " + difficulty);
+			}
 		}
 		if (call.params.has("gamerules")) {
 			for (Map.Entry<String, JsonElement> entry
@@ -240,7 +245,15 @@ final class BridgeRuntime {
 					+ number(position, 2));
 		}
 		if (call.params.has("gameMode")) {
-			commands.add("gamemode " + call.params.get("gameMode").getAsString());
+			String gameMode = call.params.get("gameMode").getAsString();
+			MinecraftServer server = minecraft.getSingleplayerServer();
+			ServerPlayer serverPlayer = server == null || minecraft.player == null
+					? null
+					: server.getPlayerList().getPlayer(minecraft.player.getUUID());
+			if (serverPlayer == null || !serverPlayer.gameMode.getGameModeForPlayer()
+					.getName().equalsIgnoreCase(gameMode)) {
+				commands.add("gamemode " + gameMode);
+			}
 		}
 		if (call.params.has("selectedSlot")) {
 			requirePlayer(minecraft).getInventory().setSelectedSlot(
