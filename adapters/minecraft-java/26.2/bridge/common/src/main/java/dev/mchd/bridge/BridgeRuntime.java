@@ -306,29 +306,26 @@ final class BridgeRuntime {
 		if (server == null) {
 			throw new BridgeRpcException(-32012, "No integrated server is running");
 		}
-		var playerId = requirePlayer(minecraft).getUUID();
 		String typeFilter = call.params.has("type")
 				? call.params.get("type").getAsString()
 				: null;
 		server.execute(() -> {
 			try {
-				ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-				if (player == null) {
-					throw new BridgeRpcException(-32012, "No server player is available");
-				}
 				JsonArray result = new JsonArray();
-				for (Entity entity : player.level().getAllEntities()) {
-					String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
-					if (typeFilter != null && !typeFilter.equals(type)) {
-						continue;
+				for (var level : server.getAllLevels()) {
+					for (Entity entity : level.getAllEntities()) {
+						String type = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+						if (typeFilter != null && !typeFilter.equals(type)) {
+							continue;
+						}
+						JsonObject value = new JsonObject();
+						value.addProperty("uuid", entity.getUUID().toString());
+						value.addProperty("type", type);
+						value.addProperty("x", entity.getX());
+						value.addProperty("y", entity.getY());
+						value.addProperty("z", entity.getZ());
+						result.add(value);
 					}
-					JsonObject value = new JsonObject();
-					value.addProperty("uuid", entity.getUUID().toString());
-					value.addProperty("type", type);
-					value.addProperty("x", entity.getX());
-					value.addProperty("y", entity.getY());
-					value.addProperty("z", entity.getZ());
-					result.add(value);
 				}
 				call.result.complete(result);
 			} catch (RuntimeException exception) {
