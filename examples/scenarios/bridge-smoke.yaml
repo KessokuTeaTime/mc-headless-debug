@@ -30,14 +30,11 @@ steps:
     call: entity.spawn
     with:
       type: minecraft:armor_stand
+      nbt: "{NoGravity:1b}"
       position:
         - 0
         - 100
         - 3
-  - name: Wait for entity insertion
-    call: wait.ticks
-    with:
-      ticks: 20
   - name: Query test entities
     call: entity.query
     with:

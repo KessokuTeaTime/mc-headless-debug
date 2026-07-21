@@ -21,10 +21,16 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.TagParser;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.entity.EntityTypeTest;
 import org.jspecify.annotations.Nullable;
 
@@ -343,15 +349,54 @@ final class BridgeRuntime {
 		if (!SAFE_ENTITY_TYPE.matcher(type).matches()) {
 			throw new BridgeRpcException(-32602, "Invalid entity type: " + type);
 		}
-		JsonArray position = call.params.getAsJsonArray("position");
-		String command = "summon " + type + " "
-				+ number(position, 0) + " "
-				+ number(position, 1) + " "
-				+ number(position, 2);
-		if (call.params.has("nbt")) {
-			command += " " + call.params.get("nbt").getAsString();
+		Identifier identifier = Identifier.tryParse(type);
+		if (identifier == null) {
+			throw new BridgeRpcException(-32602, "Invalid entity type: " + type);
 		}
-		this.executeCommand(minecraft, command, call.result);
+		EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier)
+				.orElseThrow(() -> new BridgeRpcException(
+						-32602,
+						"Unknown entity type: " + type
+				));
+		JsonArray position = call.params.getAsJsonArray("position");
+		double x = number(position, 0);
+		double y = number(position, 1);
+		double z = number(position, 2);
+		String nbt = call.params.has("nbt") ? call.params.get("nbt").getAsString() : null;
+		MinecraftServer server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			throw new BridgeRpcException(-32012, "No integrated server is running");
+		}
+		var playerId = requirePlayer(minecraft).getUUID();
+		server.execute(() -> {
+			try {
+				ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+				if (player == null) {
+					throw new BridgeRpcException(-32012, "No server player is available");
+				}
+				CompoundTag tag = nbt == null ? new CompoundTag() : TagParser.parseCompoundFully(nbt);
+				ServerLevel level = (ServerLevel) player.level();
+				Entity entity = EntityType.loadEntityRecursive(
+						entityType,
+						tag,
+						level,
+						EntitySpawnReason.COMMAND,
+						loaded -> {
+							loaded.snapTo(x, y, z, loaded.getYRot(), loaded.getXRot());
+							return loaded;
+						}
+				);
+				if (entity == null || !level.tryAddFreshEntityWithPassengers(entity)) {
+					throw new BridgeRpcException(-32020, "Unable to spawn entity: " + type);
+				}
+				JsonObject response = ok();
+				response.addProperty("executed", 1);
+				response.addProperty("result", 1);
+				call.result.complete(response);
+			} catch (CommandSyntaxException | RuntimeException exception) {
+				call.result.completeExceptionally(exception);
+			}
+		});
 	}
 
 	private void configureEntity(Minecraft minecraft, PendingCall call) {
