@@ -34,6 +34,10 @@ steps:
         - 0
         - 100
         - 3
+  - name: Wait for client entity synchronization
+    call: wait.ticks
+    with:
+      ticks: 2
   - name: Query test entities
     call: entity.query
     with:
