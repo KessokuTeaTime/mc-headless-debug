@@ -27,4 +27,4 @@ ordering = "NONE"
 side = "CLIENT"
 
 [[mixins]]
-config = "mchd-bridge.mixins.json"
+config = "mchd-bridge-common.mixins.json"
