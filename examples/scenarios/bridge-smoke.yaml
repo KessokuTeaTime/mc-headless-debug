@@ -16,8 +16,15 @@ steps:
       time: noon
       weather: clear
       difficulty: peaceful
-      gamerules:
-        "minecraft:advance_time": false
+  - name: Publish the integrated server
+    call: world.publish
+    with:
+      port: 25565
+      gameMode: creative
+      allowCommands: true
+  - name: List connected players
+    call: player.list
+    saveAs: players
   - name: Move the local player
     call: player.configure
     with:

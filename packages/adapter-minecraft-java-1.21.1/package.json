@@ -1,5 +1,5 @@
 {
-  "name": "@mc-headless-debug/adapter-minecraft-java-26.2",
+  "name": "@mc-headless-debug/adapter-minecraft-java-1.21.1",
   "version": "0.1.0",
   "type": "module",
   "exports": {

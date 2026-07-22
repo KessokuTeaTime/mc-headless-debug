@@ -28,9 +28,18 @@ It combines:
 
 The core engine is version-agnostic. It knows only adapter discovery, sessions, RPC, scenarios, capabilities, and artifacts. Minecraft versions, ModLoaders, mappings, Java versions, launchers, and game APIs are implemented by adapters.
 
-The TypeScript engine/protocol, CLI, scenario runner, MCP adapter, and agent skill are implemented. The first `minecraft-java/26.2/fabric` and `minecraft-java/26.2/neoforge` adapters provide a native Linux/Xvfb runtime and a shared control bridge for worlds, commands, the local player, entities, GUI input/inspection, screenshots, and deterministic waits.
+The TypeScript engine/protocol, CLI, scenario runner, MCP adapter, and agent skill are implemented. Fabric and NeoForge adapters for Minecraft 1.21.1 and 26.2 provide Linux/Xvfb, Docker, WSL, and macOS runtimes plus a shared control bridge for worlds, commands, players, entities, GUI input/inspection, screenshots, and deterministic waits.
 
 The original CI prototype is proven on Fabric and NeoForge in [Faded Widgets run 29717600890](https://github.com/KessokuTeaTime/Faded-Widgets/actions/runs/29717600890). This repository includes its own adapter bridge smoke workflow for execution after upload.
+
+## Supported adapters
+
+| Minecraft | Java | Fabric | NeoForge |
+| --- | ---: | ---: | ---: |
+| 1.21.1 | 21 | 0.19.3 | 21.1.243 |
+| 26.2 | 25 | 0.19.3 | 26.2.0.25-beta |
+
+Each version package exports both loader adapters, such as `minecraft-java/1.21.1/fabric` and `minecraft-java/26.2/neoforge`.
 
 Create support for another game version or ModLoader without changing the engine:
 
@@ -45,9 +54,7 @@ See [`docs/adapters.md`](docs/adapters.md) for the adapter contract.
 
 ## Roadmap
 
-- Docker, WSL, macOS, and hosted Actions backend adapters
 - Additional Minecraft-version and ModLoader adapters
-- Additional simulated/networked players through adapter capabilities
 - Screenshot baselines and image-diff assertions
 - Structured traces and replayable input recordings
 
@@ -57,7 +64,7 @@ Requirements:
 
 - Node.js 24+
 - pnpm 11.15.1
-- Java 25 for Minecraft 26.2
+- Java 21 for Minecraft 1.21.1 and Java 25 for Minecraft 26.2
 
 ```bash
 pnpm install
@@ -82,6 +89,8 @@ endpoint:
   port: 25570
   tokenFile: .mchd/token
 adapters:
+  minecraft-java/1.21.1/fabric: "@mc-headless-debug/adapter-minecraft-java-1.21.1/fabric"
+  minecraft-java/1.21.1/neoforge: "@mc-headless-debug/adapter-minecraft-java-1.21.1/neoforge"
   minecraft-java/26.2/fabric: "@mc-headless-debug/adapter-minecraft-java-26.2/fabric"
   minecraft-java/26.2/neoforge: "@mc-headless-debug/adapter-minecraft-java-26.2/neoforge"
 ```
@@ -100,6 +109,8 @@ Install the CLI globally and the required runtime adapter in each mod project:
 
 ```bash
 pnpm add -g @mc-headless-debug/cli @mc-headless-debug/mcp
+pnpm add -D @mc-headless-debug/adapter-minecraft-java-1.21.1
+# or
 pnpm add -D @mc-headless-debug/adapter-minecraft-java-26.2
 ```
 

@@ -30,12 +30,16 @@ export interface AdapterCheck {
   detail: string;
 }
 
-export interface PreparedRuntime {
+export interface ProcessCommand {
   command: string;
   args: string[];
   cwd: string;
   env: Record<string, string>;
+}
+
+export interface PreparedRuntime extends ProcessCommand {
   endpoint: Endpoint;
+  stopCommand?: ProcessCommand;
 }
 
 export interface RuntimeProcess {

@@ -8,14 +8,14 @@ import {
 const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = resolve(packageDirectory, '..', '..');
 const spec: MinecraftAdapterSpec = {
-  gameVersion: '26.2',
-  javaVersion: 25,
+  gameVersion: '1.21.1',
+  javaVersion: 21,
   packageDirectory,
   bridgeSourceDirectory: join(
     repositoryRoot,
     'adapters',
     'minecraft-java',
-    '26.2',
+    '1.21.1',
     'bridge'
   ),
   loaders: {
@@ -24,18 +24,18 @@ const spec: MinecraftAdapterSpec = {
       displayName: 'Fabric',
       version: '0.19.3',
       installCommand: 'fabric',
-      profileRegex: '.*fabric-loader-0\\.19\\.3-26\\.2.*',
+      profileRegex: '.*fabric-loader-0\\.19\\.3-1\\.21\\.1.*',
       metadata: 'fabric.mod.json',
       bridgeArtifact: 'fabric.jar',
-      bridgeTask: ':fabric:shadowJar'
+      bridgeTask: ':fabric:remapJar'
     },
     neoforge: {
       id: 'neoforge',
       displayName: 'NeoForge',
-      version: '26.2.0.25-beta',
+      version: '21.1.243',
       installCommand: 'neoforge',
-      installerUrl: 'https://maven.neoforged.net/releases/net/neoforged/neoforge/26.2.0.25-beta/neoforge-26.2.0.25-beta-installer.jar',
-      profileRegex: '.*neoforge-26\\.2\\.0\\.25-beta.*',
+      installerUrl: 'https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.243/neoforge-21.1.243-installer.jar',
+      profileRegex: '.*neoforge-21\\.1\\.243.*',
       metadata: 'META-INF/neoforge.mods.toml',
       bridgeArtifact: 'neoforge.jar',
       bridgeTask: ':neoforge:shadowJar'
@@ -43,6 +43,6 @@ const spec: MinecraftAdapterSpec = {
   }
 };
 
-export function createMinecraft262Adapter(loader: 'fabric' | 'neoforge') {
+export function createMinecraft1211Adapter(loader: 'fabric' | 'neoforge') {
   return createMinecraftJavaAdapter(spec, loader);
 }

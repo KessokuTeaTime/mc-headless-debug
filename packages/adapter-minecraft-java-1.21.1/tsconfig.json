@@ -6,11 +6,7 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "references": [
-    {
-      "path": "../adapter-minecraft-java-runtime"
-    }
+    { "path": "../adapter-minecraft-java-runtime" }
   ],
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

@@ -101,12 +101,14 @@ final class BridgeRuntime {
 			}
 			case "world.create" -> this.createWorld(minecraft, call);
 			case "world.configure" -> this.configureWorld(minecraft, call);
+			case "world.publish" -> this.publishWorld(minecraft, call);
 			case "command.execute" -> this.executeCommand(
 					minecraft,
 					requiredString(call.params, "command"),
 					call.result
 			);
 			case "player.get" -> call.result.complete(this.playerState(minecraft));
+			case "player.list" -> this.listPlayers(minecraft, call);
 			case "player.configure" -> this.configurePlayer(minecraft, call);
 			case "player.input" -> this.controlPlayer(minecraft, call);
 			case "entity.query" -> this.queryEntities(minecraft, call);
@@ -268,6 +270,22 @@ final class BridgeRuntime {
 		this.executeCommands(minecraft, commands, call.result);
 	}
 
+	private void publishWorld(Minecraft minecraft, PendingCall call) {
+		boolean allowCommands = optionalBoolean(call.params, "allowCommands", true);
+		String gameMode = optionalString(call.params, "gameMode", "creative");
+		int port = optionalInt(call.params, "port", 25565);
+		MinecraftServer server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			throw new BridgeRpcException(-32012, "No integrated server is running");
+		}
+		server.setUsesAuthentication(optionalBoolean(call.params, "onlineMode", false));
+		this.executeCommand(
+				minecraft,
+				"publish " + allowCommands + " " + gameMode + " " + port,
+				call.result
+		);
+	}
+
 	private void controlPlayer(Minecraft minecraft, PendingCall call) {
 		String input = requiredString(call.params, "input");
 		boolean down = optionalBoolean(call.params, "down", true);
@@ -307,6 +325,26 @@ final class BridgeRuntime {
 		result.addProperty("selectedSlot", player.getInventory().getSelectedSlot());
 		return result;
 	}
+	private void listPlayers(Minecraft minecraft, PendingCall call) {
+		MinecraftServer server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			throw new BridgeRpcException(-32012, "No integrated server is running");
+		}
+		server.execute(() -> {
+			JsonArray result = new JsonArray();
+			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+				JsonObject value = new JsonObject();
+				value.addProperty("uuid", player.getUUID().toString());
+				value.addProperty("name", player.getName().getString());
+				value.addProperty("x", player.getX());
+				value.addProperty("y", player.getY());
+				value.addProperty("z", player.getZ());
+				result.add(value);
+			}
+			call.result.complete(result);
+		});
+	}
+
 
 	private void queryEntities(Minecraft minecraft, PendingCall call) {
 		MinecraftServer server = minecraft.getSingleplayerServer();

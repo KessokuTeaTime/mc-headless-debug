@@ -19,9 +19,10 @@ An adapter owns:
 Use hierarchical IDs:
 
 ```text
+minecraft-java/1.21.1/fabric
+minecraft-java/1.21.1/neoforge
 minecraft-java/26.2/fabric
 minecraft-java/26.2/neoforge
-minecraft-java/1.21.11/quilt
 ```
 
 The hierarchy is descriptive, not hard-coded. Third parties can register different games, launchers, or custom loader distributions.

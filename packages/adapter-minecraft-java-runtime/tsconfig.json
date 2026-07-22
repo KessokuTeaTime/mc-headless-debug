@@ -5,12 +5,8 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
+  "include": ["src/**/*.ts"],
   "references": [
-    {
-      "path": "../adapter-minecraft-java-runtime"
-    }
-  ],
-  "include": [
-    "src/**/*.ts"
+    { "path": "../engine" }
   ]
 }

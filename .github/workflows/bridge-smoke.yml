@@ -9,12 +9,15 @@ permissions:
 
 jobs:
   bridge-smoke:
-    name: Minecraft 26.2 / ${{ matrix.loader }}
+    name: Minecraft ${{ matrix.game-version }} / ${{ matrix.loader }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        game-version:
+          - "1.21.1"
+          - "26.2"
         loader:
           - fabric
           - neoforge
@@ -27,7 +30,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: ${{ matrix.game-version == '1.21.1' && '21' || '25' }}
       - uses: gradle/actions/setup-gradle@v6
       - name: Enable pnpm
         run: |
@@ -39,10 +42,11 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm --filter @mc-headless-debug/adapter-minecraft-java-26.2 build:bridge
+          pnpm --filter @mc-headless-debug/adapter-minecraft-java-${{ matrix.game-version }} build:bridge
       - name: Configure adapter
         env:
           LOADER: ${{ matrix.loader }}
+          GAME_VERSION: ${{ matrix.game-version }}
         run: |
           mkdir -p artifacts
           cat > e2e.config.yaml <<EOF
@@ -50,7 +54,7 @@ jobs:
           projectRoot: .
           artifacts: artifacts
           runtime:
-            adapter: minecraft-java/26.2/$LOADER
+            adapter: minecraft-java/$GAME_VERSION/$LOADER
             backend: native
             options:
               build: false
@@ -60,14 +64,13 @@ jobs:
             port: 25570
             tokenFile: .mchd/token
           adapters:
-            minecraft-java/26.2/fabric: "@mc-headless-debug/adapter-minecraft-java-26.2/fabric"
-            minecraft-java/26.2/neoforge: "@mc-headless-debug/adapter-minecraft-java-26.2/neoforge"
+            minecraft-java/$GAME_VERSION/$LOADER: "@mc-headless-debug/adapter-minecraft-java-$GAME_VERSION/$LOADER"
           EOF
       - name: Launch and control Minecraft
         run: |
           pnpm --filter @mc-headless-debug/cli dev run \
             --config "$GITHUB_WORKSPACE/e2e.config.yaml" \
-            > artifacts/runtime-${{ matrix.loader }}.log 2>&1 &
+            > artifacts/runtime-${{ matrix.game-version }}-${{ matrix.loader }}.log 2>&1 &
           runtime_pid=$!
           echo "$runtime_pid" > artifacts/runtime.pid
           for attempt in $(seq 1 180); do
@@ -75,7 +78,7 @@ jobs:
               break
             fi
             if ! kill -0 "$runtime_pid" 2>/dev/null; then
-              cat artifacts/runtime-${{ matrix.loader }}.log
+              cat artifacts/runtime-${{ matrix.game-version }}-${{ matrix.loader }}.log
               exit 1
             fi
             sleep 5
@@ -96,7 +99,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bridge-smoke-${{ matrix.loader }}
+          name: bridge-smoke-${{ matrix.game-version }}-${{ matrix.loader }}
           if-no-files-found: warn
           path: |
             artifacts
