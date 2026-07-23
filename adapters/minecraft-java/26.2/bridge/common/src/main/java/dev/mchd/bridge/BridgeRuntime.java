@@ -12,7 +12,6 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
@@ -195,7 +194,8 @@ final class BridgeRuntime {
 			return;
 		}
 
-		if (!creation.submitted && minecraft.gui.screen() instanceof TitleScreen) {
+		if (!creation.submitted && minecraft.gui.screen() != null
+				&& !(minecraft.gui.screen() instanceof CreateWorldScreen)) {
 			CreateWorldScreen.openFresh(minecraft, null);
 			return;
 		}
