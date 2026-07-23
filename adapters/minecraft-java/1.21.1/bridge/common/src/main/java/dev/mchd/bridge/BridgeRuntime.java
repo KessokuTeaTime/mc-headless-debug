@@ -12,10 +12,10 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
-import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -158,7 +158,6 @@ final class BridgeRuntime {
                 selectedDifficulty,
                 allowCommands
         );
-        CreateWorldScreen.openFresh(minecraft, null);
     }
 
     private void updateWorldCreation(Minecraft minecraft) {
@@ -168,6 +167,10 @@ final class BridgeRuntime {
         }
         if (creation.result.isCancelled()) {
             this.worldCreation = null;
+            return;
+        }
+        if (!creation.submitted && minecraft.screen instanceof TitleScreen) {
+            CreateWorldScreen.openFresh(minecraft, null);
             return;
         }
         if (!creation.submitted && minecraft.screen instanceof CreateWorldScreen screen) {
@@ -595,10 +598,10 @@ final class BridgeRuntime {
         return minecraft.player != null
                 && minecraft.level != null
                 && minecraft.getSingleplayerServer() != null
-                && !minecraft.level.getChunk(
-                SectionPos.blockToSectionCoord(minecraft.player.getBlockX()),
-                SectionPos.blockToSectionCoord(minecraft.player.getBlockZ())
-        ).isEmpty();
+                && minecraft.level.hasChunk(
+                minecraft.player.chunkPosition().x,
+                minecraft.player.chunkPosition().z
+        );
     }
 
     private static net.minecraft.client.player.LocalPlayer requirePlayer(Minecraft minecraft) {
