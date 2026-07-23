@@ -216,6 +216,7 @@ async function prepare(
   ], runtimeDirectory, backendOptions, backendContext);
   if (!await hasInstalledProfile(minecraftDirectory, loader.profileRegex)) {
     if (loader.installerUrl) {
+      await ensureLauncherProfile(minecraftDirectory);
       const installer = join(runtimeDirectory, `${loader.id}-${loader.version}-installer.jar`);
       await downloadIfMissing(loader.installerUrl, installer, loader.displayName);
       const backendInstaller = await backend.mapPath(installer, backendOptions);
@@ -267,6 +268,15 @@ async function downloadIfMissing(url: string, path: string, name: string): Promi
     }
   }
   throw new Error(`Could not download ${name}: ${failure}`);
+}
+
+async function ensureLauncherProfile(minecraftDirectory: string): Promise<void> {
+  const profile = join(minecraftDirectory, 'launcher_profiles.json');
+  if (await exists(profile)) {
+    return;
+  }
+  await mkdir(minecraftDirectory, { recursive: true });
+  await writeFile(profile, '{}\n');
 }
 
 async function hasInstalledProfile(
