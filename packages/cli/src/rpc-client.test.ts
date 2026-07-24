@@ -27,8 +27,10 @@ describe('RpcClient', () => {
         const request = JSON.parse(data.toString().trim()) as {
           id: string;
           token: string;
+          timeoutMs: number;
         };
         expect(request.token).toBe(token);
+        expect(request.timeoutMs).toBe(1_234);
         socket.end(`${JSON.stringify({
           jsonrpc: '2.0',
           id: request.id,
@@ -48,12 +50,38 @@ describe('RpcClient', () => {
         port: address.port,
         tokenFile
       });
-      await expect(client.call('runtime.status')).resolves.toEqual({ ready: true });
+      await expect(client.call('runtime.status', {}, 1_234))
+        .resolves.toEqual({ ready: true });
     } finally {
       server.close();
     }
   });
 
+
+  it('enforces the timeout supplied for one call', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mchd-rpc-'));
+    temporaryDirectories.push(directory);
+    const tokenFile = join(directory, 'token');
+    await writeFile(tokenFile, `${'c'.repeat(64)}\n`);
+    const server = createServer(() => {});
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Test server has no TCP address');
+    }
+
+    try {
+      const client = await RpcClient.fromEndpoint({
+        host: '127.0.0.1',
+        port: address.port,
+        tokenFile
+      });
+      await expect(client.call('world.create', {}, 20))
+        .rejects.toThrow('RPC call timed out after 20 ms: world.create');
+    } finally {
+      server.close();
+    }
+  });
   it('rejects immediately when the bridge closes without a response', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mchd-rpc-'));
     temporaryDirectories.push(directory);

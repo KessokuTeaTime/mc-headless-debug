@@ -13,4 +13,10 @@ public abstract class MinecraftMixin {
     private void mchd$tick(CallbackInfo callback) {
         MchdBridge.tick((Minecraft) (Object) this);
     }
+
+    @Inject(method = "runTick", at = @At("TAIL"))
+    private void mchd$frame(boolean renderLevel, CallbackInfo callback) {
+        MchdBridge.frame((Minecraft) (Object) this);
+    }
+
 }

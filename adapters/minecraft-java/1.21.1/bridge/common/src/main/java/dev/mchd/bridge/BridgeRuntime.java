@@ -2,9 +2,13 @@ package dev.mchd.bridge;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.mchd.bridge.mixin.CreateWorldScreenInvoker;
+import dev.mchd.bridge.mixin.KeyboardHandlerInvoker;
+import dev.mchd.bridge.mixin.MouseHandlerInvoker;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -18,7 +22,9 @@ import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 
 import java.io.File;
@@ -27,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -36,12 +43,22 @@ final class BridgeRuntime {
             Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9._-]*");
     private static final Pattern SAFE_ENTITY_TYPE =
             Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
+    private static final Set<String> LOADING_SCREENS = Set.of(
+            "ConnectScreen",
+            "GenericMessageScreen",
+            "LevelLoadingScreen",
+            "ProgressScreen",
+            "ReceivingLevelScreen"
+    );
 
     private final ConcurrentLinkedQueue<PendingCall> calls = new ConcurrentLinkedQueue<>();
     private final List<TickWaiter> waiters = new ArrayList<>();
+    private final List<FrameWaiter> frameWaiters = new ArrayList<>();
     private final List<ScheduledAction> scheduledActions = new ArrayList<>();
+    private final List<InputSequence> inputSequences = new ArrayList<>();
     private long tick;
-    private volatile boolean stopNextTick;
+    private long frame;
+    private long stopAtTick = -1;
     private WorldCreation worldCreation;
 
     CompletableFuture<JsonElement> dispatch(String adapterId, String method, JsonObject params) {
@@ -50,22 +67,38 @@ final class BridgeRuntime {
         return result;
     }
 
+    void frame(Minecraft minecraft) {
+        this.frame++;
+        this.frameWaiters.removeIf(waiter -> {
+            if (waiter.result.isCancelled()) {
+                return true;
+            }
+            if (this.frame < waiter.targetFrame) {
+                return false;
+            }
+            JsonObject result = ok();
+            result.addProperty("frame", this.frame);
+            waiter.result.complete(result);
+            return true;
+        });
+    }
+
+
     void tick(Minecraft minecraft) {
         this.tick++;
         this.processCalls(minecraft);
         this.updateWorldCreation(minecraft);
+        this.updateInputSequences(minecraft);
         this.updateWaiters(minecraft);
         this.updateScheduledActions();
-        if (this.stopNextTick) {
-            this.stopNextTick = false;
+        if (this.stopAtTick >= 0 && this.tick >= this.stopAtTick) {
+            MchdBridge.LOGGER.info("Stopping MC Headless Debug runtime at tick {}", this.tick);
+            this.stopAtTick = -1;
             MchdBridge.stop();
             minecraft.stop();
         }
     }
 
-    void confirmStopResponse() {
-        this.stopNextTick = true;
-    }
 
     private void processCalls(Minecraft minecraft) {
         PendingCall call;
@@ -81,7 +114,14 @@ final class BridgeRuntime {
     private void handle(Minecraft minecraft, PendingCall call) {
         switch (call.method) {
             case "runtime.status" -> call.result.complete(this.runtimeStatus(minecraft, call.adapterId));
-            case "runtime.stop" -> call.result.complete(ok());
+            case "runtime.lifecycle" -> call.result.complete(this.lifecycle(minecraft));
+            case "runtime.stop" -> {
+                call.result.complete(ok());
+                this.stopAtTick = this.tick + 5;
+                MchdBridge.LOGGER.info("Scheduled MC Headless Debug runtime stop for tick {}", this.stopAtTick);
+            }
+            case "world.inspect" -> this.inspectWorld(minecraft, call);
+            case "block.inspect" -> this.inspectBlock(minecraft, call);
             case "world.create" -> this.createWorld(minecraft, call);
             case "world.configure" -> this.configureWorld(minecraft, call);
             case "world.publish" -> this.publishWorld(minecraft, call);
@@ -92,6 +132,9 @@ final class BridgeRuntime {
             );
             case "player.get" -> call.result.complete(this.playerState(minecraft));
             case "player.list" -> this.listPlayers(minecraft, call);
+            case "player.inventory" -> call.result.complete(
+                    this.inspectInventory(minecraft, call.params)
+            );
             case "player.configure" -> this.configurePlayer(minecraft, call);
             case "player.input" -> this.controlPlayer(minecraft, call);
             case "entity.query" -> this.queryEntities(minecraft, call);
@@ -102,9 +145,12 @@ final class BridgeRuntime {
             case "gui.open" -> call.result.complete(this.openGui(minecraft, call.params));
             case "gui.click" -> call.result.complete(this.clickGui(minecraft, call.params));
             case "gui.key" -> call.result.complete(this.keyGui(minecraft, call.params));
+            case "input.dispatch" -> this.dispatchInput(call);
+            case "input.state" -> call.result.complete(this.inputState(minecraft));
             case "gui.type" -> call.result.complete(this.typeGui(minecraft, call.params));
             case "screenshot.capture" -> this.captureScreenshot(minecraft, call);
             case "wait.ticks" -> this.waitTicks(call);
+            case "wait.frames" -> this.waitFrames(call);
             case "wait.until" -> this.waitUntil(call);
             default -> throw new BridgeRpcException(
                     -32601,
@@ -114,17 +160,43 @@ final class BridgeRuntime {
     }
 
     private JsonObject runtimeStatus(Minecraft minecraft, String adapterId) {
-        JsonObject status = new JsonObject();
+        JsonObject status = this.lifecycle(minecraft);
         status.addProperty("ready", true);
         status.addProperty("adapter", adapterId);
-        status.addProperty("tick", this.tick);
-        status.addProperty("inWorld", minecraft.level != null && minecraft.player != null);
-        status.addProperty(
-                "screen",
-                minecraft.screen == null ? null : minecraft.screen.getClass().getName()
-        );
         return status;
     }
+
+    private JsonObject lifecycle(Minecraft minecraft) {
+        Screen screen = minecraft.screen;
+        var overlay = minecraft.getOverlay();
+        boolean gameReady = gameReady(minecraft);
+        boolean menuReady = menuReady(minecraft);
+        boolean worldLoaded = worldLoaded(minecraft);
+        boolean worldReady = worldReady(minecraft);
+        String phase;
+        if (!minecraft.isGameLoadFinished()) {
+            phase = "starting";
+        } else if (overlay != null) {
+            phase = "loading";
+        } else if (minecraft.level != null || minecraft.player != null) {
+            phase = worldReady ? "world_ready" : "world_loading";
+        } else {
+            phase = menuReady ? "menu_ready" : "menu_loading";
+        }
+        JsonObject status = new JsonObject();
+        status.addProperty("phase", phase);
+        status.addProperty("tick", this.tick);
+        status.addProperty("frame", this.frame);
+        status.addProperty("gameReady", gameReady);
+        status.addProperty("menuReady", menuReady);
+        status.addProperty("worldLoaded", worldLoaded);
+        status.addProperty("worldReady", worldReady);
+        status.addProperty("inWorld", minecraft.level != null && minecraft.player != null);
+        status.add("screen", screen == null ? JsonNull.INSTANCE : new JsonPrimitive(screen.getClass().getName()));
+        status.add("overlay", overlay == null ? JsonNull.INSTANCE : new JsonPrimitive(overlay.getClass().getName()));
+        return status;
+    }
+
 
     private void createWorld(Minecraft minecraft, PendingCall call) {
         if (minecraft.level != null || minecraft.player != null) {
@@ -185,11 +257,20 @@ final class BridgeRuntime {
             return;
         }
         if (creation.submitted && worldReady(minecraft)) {
-            JsonObject result = ok();
-            result.addProperty("name", creation.name);
-            result.addProperty("seed", creation.seed);
-            creation.result.complete(result);
-            this.worldCreation = null;
+            if (creation.readyFrame < 0) {
+                creation.readyFrame = this.frame;
+                return;
+            }
+            if (this.frame > creation.readyFrame) {
+                JsonObject result = ok();
+                result.addProperty("name", creation.name);
+                result.addProperty("seed", creation.seed);
+                result.addProperty("frame", this.frame);
+                creation.result.complete(result);
+                this.worldCreation = null;
+            }
+        } else {
+            creation.readyFrame = -1;
         }
     }
 
@@ -217,6 +298,77 @@ final class BridgeRuntime {
         }
         this.executeCommands(minecraft, commands, call.result);
     }
+
+    private void inspectWorld(Minecraft minecraft, PendingCall call) {
+        MinecraftServer server = minecraft.getSingleplayerServer();
+        if (server == null) {
+            throw new BridgeRpcException(-32012, "No integrated server is running");
+        }
+        var playerId = requirePlayer(minecraft).getUUID();
+        server.execute(() -> {
+            try {
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                if (player == null) {
+                    throw new BridgeRpcException(-32012, "No server player is available");
+                }
+                ServerLevel level = (ServerLevel) player.level();
+                JsonObject result = new JsonObject();
+                result.addProperty("dimension", level.dimension().location().toString());
+                result.addProperty("gameTime", level.getGameTime());
+                result.addProperty("dayTime", level.getDayTime());
+                result.addProperty("difficulty", level.getDifficulty().name().toLowerCase(Locale.ROOT));
+                result.addProperty("raining", level.isRaining());
+                result.addProperty("thundering", level.isThundering());
+                result.addProperty("seed", level.getSeed());
+                call.result.complete(result);
+            } catch (RuntimeException exception) {
+                call.result.completeExceptionally(exception);
+            }
+        });
+    }
+
+    private void inspectBlock(Minecraft minecraft, PendingCall call) {
+        JsonArray position = call.params.getAsJsonArray("position");
+        BlockPos blockPos = new BlockPos(
+                (int) number(position, 0),
+                (int) number(position, 1),
+                (int) number(position, 2)
+        );
+        MinecraftServer server = minecraft.getSingleplayerServer();
+        if (server == null) {
+            throw new BridgeRpcException(-32012, "No integrated server is running");
+        }
+        var playerId = requirePlayer(minecraft).getUUID();
+        server.execute(() -> {
+            try {
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                if (player == null) {
+                    throw new BridgeRpcException(-32012, "No server player is available");
+                }
+                ServerLevel level = (ServerLevel) player.level();
+                var state = level.getBlockState(blockPos);
+                JsonObject result = new JsonObject();
+                result.addProperty("x", blockPos.getX());
+                result.addProperty("y", blockPos.getY());
+                result.addProperty("z", blockPos.getZ());
+                result.addProperty("block", BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+                result.addProperty("air", state.isAir());
+                result.addProperty(
+                        "fluid",
+                        BuiltInRegistries.FLUID.getKey(state.getFluidState().getType()).toString()
+                );
+                JsonObject properties = new JsonObject();
+                state.getValues().forEach((property, value) ->
+                        properties.addProperty(property.getName(), String.valueOf(value))
+                );
+                result.add("properties", properties);
+                call.result.complete(result);
+            } catch (RuntimeException exception) {
+                call.result.completeExceptionally(exception);
+            }
+        });
+    }
+
 
     private void publishWorld(Minecraft minecraft, PendingCall call) {
         boolean allowCommands = optionalBoolean(call.params, "allowCommands", true);
@@ -281,6 +433,178 @@ final class BridgeRuntime {
         call.result.complete(ok());
     }
 
+    private void dispatchInput(PendingCall call) {
+        if (!call.params.has("events") || !call.params.get("events").isJsonArray()) {
+            throw new BridgeRpcException(-32602, "events must be an array");
+        }
+        JsonArray values = call.params.getAsJsonArray("events");
+        if (values.isEmpty() || values.size() > 1024) {
+            throw new BridgeRpcException(-32602, "events must contain from 1 to 1024 items");
+        }
+        List<JsonObject> events = new ArrayList<>(values.size());
+        for (JsonElement value : values) {
+            if (!value.isJsonObject()) {
+                throw new BridgeRpcException(-32602, "Every input event must be an object");
+            }
+            JsonObject event = value.getAsJsonObject();
+            validateInputEvent(event);
+            events.add(event.deepCopy());
+        }
+        InputSequence sequence = new InputSequence(events, call.result);
+        sequence.nextTick = this.tick + inputDelay(events.getFirst());
+        this.inputSequences.add(sequence);
+    }
+
+    private JsonObject inputState(Minecraft minecraft) {
+        var window = minecraft.getWindow();
+        JsonObject result = new JsonObject();
+        result.addProperty("x", minecraft.mouseHandler.xpos());
+        result.addProperty("y", minecraft.mouseHandler.ypos());
+        result.addProperty(
+                "guiX",
+                minecraft.mouseHandler.xpos() * window.getGuiScaledWidth() / window.getScreenWidth()
+        );
+        result.addProperty(
+                "guiY",
+                minecraft.mouseHandler.ypos() * window.getGuiScaledHeight() / window.getScreenHeight()
+        );
+        result.addProperty("leftPressed", minecraft.mouseHandler.isLeftPressed());
+        result.addProperty("middlePressed", minecraft.mouseHandler.isMiddlePressed());
+        result.addProperty("rightPressed", minecraft.mouseHandler.isRightPressed());
+        result.addProperty("grabbed", minecraft.mouseHandler.isMouseGrabbed());
+        result.addProperty("windowWidth", window.getScreenWidth());
+        result.addProperty("windowHeight", window.getScreenHeight());
+        result.addProperty("guiWidth", window.getGuiScaledWidth());
+        result.addProperty("guiHeight", window.getGuiScaledHeight());
+        return result;
+    }
+
+    private void updateInputSequences(Minecraft minecraft) {
+        this.inputSequences.removeIf(sequence -> {
+            if (sequence.result.isCancelled()) {
+                return true;
+            }
+            try {
+                while (sequence.index < sequence.events.size()
+                        && this.tick >= sequence.nextTick) {
+                    dispatchInputEvent(minecraft, sequence.events.get(sequence.index));
+                    sequence.index++;
+                    if (sequence.index < sequence.events.size()) {
+                        sequence.nextTick = this.tick
+                                + inputDelay(sequence.events.get(sequence.index));
+                    }
+                }
+                if (sequence.index < sequence.events.size()) {
+                    return false;
+                }
+                JsonObject result = ok();
+                result.addProperty("events", sequence.events.size());
+                result.addProperty("tick", this.tick);
+                sequence.result.complete(result);
+                return true;
+            } catch (RuntimeException exception) {
+                sequence.result.completeExceptionally(exception);
+                return true;
+            }
+        });
+    }
+
+    private static void validateInputEvent(JsonObject event) {
+        String type = requiredString(event, "type");
+        int delayTicks = inputDelay(event);
+        if (delayTicks < 0 || delayTicks > 1200) {
+            throw new BridgeRpcException(-32602, "delayTicks must be from 0 to 1200");
+        }
+        switch (type) {
+            case "key" -> {
+                requiredInt(event, "key");
+                inputAction(event, true);
+            }
+            case "text" -> requiredString(event, "text");
+            case "mouseMove" -> {
+                requiredDouble(event, "x");
+                requiredDouble(event, "y");
+                String space = optionalString(event, "space", "gui");
+                if (!space.equals("gui") && !space.equals("window")) {
+                    throw new BridgeRpcException(-32602, "space must be gui or window");
+                }
+            }
+            case "mouseButton" -> {
+                requiredInt(event, "button");
+                inputAction(event, false);
+            }
+            case "mouseScroll" -> requiredDouble(event, "yOffset");
+            default -> throw new BridgeRpcException(-32602, "Unknown input event: " + type);
+        }
+    }
+
+    private static void dispatchInputEvent(Minecraft minecraft, JsonObject event) {
+        String type = requiredString(event, "type");
+        long windowHandle = minecraft.getWindow().getWindow();
+        switch (type) {
+            case "key" -> minecraft.keyboardHandler.keyPress(
+                    windowHandle,
+                    requiredInt(event, "key"),
+                    optionalInt(event, "scancode", 0),
+                    inputAction(event, true),
+                    optionalInt(event, "modifiers", 0)
+            );
+            case "text" -> {
+                String text = requiredString(event, "text");
+                for (int index = 0; index < text.length();) {
+                    int codepoint = text.codePointAt(index);
+                    ((KeyboardHandlerInvoker) minecraft.keyboardHandler).mchd$charTyped(
+                            windowHandle,
+                            codepoint,
+                            optionalInt(event, "modifiers", 0)
+                    );
+                    index += Character.charCount(codepoint);
+                }
+            }
+            case "mouseMove" -> {
+                double x = requiredDouble(event, "x");
+                double y = requiredDouble(event, "y");
+                if (optionalString(event, "space", "gui").equals("gui")) {
+                    var window = minecraft.getWindow();
+                    x *= (double) window.getScreenWidth() / window.getGuiScaledWidth();
+                    y *= (double) window.getScreenHeight() / window.getGuiScaledHeight();
+                }
+                ((MouseHandlerInvoker) minecraft.mouseHandler).mchd$onMove(windowHandle, x, y);
+            }
+            case "mouseButton" -> ((MouseHandlerInvoker) minecraft.mouseHandler).mchd$onPress(
+                    windowHandle,
+                    requiredInt(event, "button"),
+                    inputAction(event, false),
+                    optionalInt(event, "modifiers", 0)
+            );
+            case "mouseScroll" -> ((MouseHandlerInvoker) minecraft.mouseHandler).mchd$onScroll(
+                    windowHandle,
+                    optionalDouble(event, "xOffset", 0),
+                    requiredDouble(event, "yOffset")
+            );
+            default -> throw new BridgeRpcException(-32602, "Unknown input event: " + type);
+        }
+    }
+
+    private static int inputAction(JsonObject event, boolean repeatAllowed) {
+        return switch (requiredString(event, "action")) {
+            case "release" -> 0;
+            case "press" -> 1;
+            case "repeat" -> {
+                if (!repeatAllowed) {
+                    throw new BridgeRpcException(-32602, "repeat is only valid for key events");
+                }
+                yield 2;
+            }
+            default -> throw new BridgeRpcException(-32602, "Unknown input action");
+        };
+    }
+
+    private static int inputDelay(JsonObject event) {
+        return optionalInt(event, "delayTicks", 0);
+    }
+
+
     private JsonObject playerState(Minecraft minecraft) {
         var player = requirePlayer(minecraft);
         JsonObject result = new JsonObject();
@@ -294,6 +618,29 @@ final class BridgeRuntime {
         result.addProperty("selectedSlot", player.getInventory().selected);
         return result;
     }
+
+    private JsonObject inspectInventory(Minecraft minecraft, JsonObject params) {
+        var inventory = requirePlayer(minecraft).getInventory();
+        boolean includeEmpty = optionalBoolean(params, "includeEmpty", false);
+        JsonArray slots = new JsonArray();
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            var stack = inventory.getItem(slot);
+            if (stack.isEmpty() && !includeEmpty) {
+                continue;
+            }
+            JsonObject value = new JsonObject();
+            value.addProperty("slot", slot);
+            value.addProperty("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+            value.addProperty("count", stack.getCount());
+            value.addProperty("empty", stack.isEmpty());
+            slots.add(value);
+        }
+        JsonObject result = new JsonObject();
+        result.addProperty("selectedSlot", inventory.selected);
+        result.add("slots", slots);
+        return result;
+    }
+
     private void listPlayers(Minecraft minecraft, PendingCall call) {
         MinecraftServer server = minecraft.getSingleplayerServer();
         if (server == null) {
@@ -383,26 +730,38 @@ final class BridgeRuntime {
     private JsonObject inspectGui(Minecraft minecraft) {
         JsonObject result = new JsonObject();
         Screen screen = minecraft.screen;
-        if (screen == null) {
-            result.addProperty("screen", (String) null);
-            result.add("widgets", new JsonArray());
-            return result;
-        }
-        result.addProperty("screen", screen.getClass().getName());
+        var window = minecraft.getWindow();
+        result.add("screen", screen == null ? JsonNull.INSTANCE : new JsonPrimitive(screen.getClass().getName()));
+        result.addProperty("width", screen == null ? window.getGuiScaledWidth() : screen.width);
+        result.addProperty("height", screen == null ? window.getGuiScaledHeight() : screen.height);
+        result.addProperty(
+                "mouseX",
+                minecraft.mouseHandler.xpos() * window.getGuiScaledWidth() / window.getScreenWidth()
+        );
+        result.addProperty(
+                "mouseY",
+                minecraft.mouseHandler.ypos() * window.getGuiScaledHeight() / window.getScreenHeight()
+        );
         JsonArray widgets = new JsonArray();
-        for (GuiEventListener child : screen.children()) {
-            JsonObject widget = new JsonObject();
-            widget.addProperty("type", child.getClass().getName());
-            if (child instanceof AbstractWidget abstractWidget) {
-                widget.addProperty("message", abstractWidget.getMessage().getString());
-                widget.addProperty("x", abstractWidget.getX());
-                widget.addProperty("y", abstractWidget.getY());
-                widget.addProperty("width", abstractWidget.getWidth());
-                widget.addProperty("height", abstractWidget.getHeight());
-                widget.addProperty("active", abstractWidget.active);
-                widget.addProperty("visible", abstractWidget.visible);
+        if (screen != null) {
+            int index = 0;
+            for (GuiEventListener child : screen.children()) {
+                JsonObject widget = new JsonObject();
+                widget.addProperty("index", index++);
+                widget.addProperty("type", child.getClass().getName());
+                widget.addProperty("focused", child == screen.getFocused());
+                if (child instanceof AbstractWidget abstractWidget) {
+                    widget.addProperty("message", abstractWidget.getMessage().getString());
+                    widget.addProperty("x", abstractWidget.getX());
+                    widget.addProperty("y", abstractWidget.getY());
+                    widget.addProperty("width", abstractWidget.getWidth());
+                    widget.addProperty("height", abstractWidget.getHeight());
+                    widget.addProperty("active", abstractWidget.active);
+                    widget.addProperty("visible", abstractWidget.visible);
+                    widget.addProperty("hovered", abstractWidget.isHovered());
+                }
+                widgets.add(widget);
             }
-            widgets.add(widget);
         }
         result.add("widgets", widgets);
         return result;
@@ -498,14 +857,25 @@ final class BridgeRuntime {
     private void waitUntil(PendingCall call) {
         String condition = requiredString(call.params, "condition");
         Predicate<Minecraft> predicate = switch (condition) {
+            case "gameReady" -> BridgeRuntime::gameReady;
+            case "menuReady" -> BridgeRuntime::menuReady;
+            case "worldLoaded" -> BridgeRuntime::worldLoaded;
             case "worldReady" -> BridgeRuntime::worldReady;
             case "screen" -> {
                 String expected = requiredString(call.params, "value");
-                yield minecraft -> minecraft.screen != null
-                        && (minecraft.screen.getClass().getName().equals(expected)
-                        || minecraft.screen.getClass().getSimpleName().equals(expected));
+                yield minecraft -> matchesClass(minecraft.screen, expected);
             }
             case "noScreen" -> minecraft -> minecraft.screen == null;
+            case "overlay" -> {
+                String expected = requiredString(call.params, "value");
+                yield minecraft -> matchesClass(minecraft.getOverlay(), expected);
+            }
+            case "noOverlay" -> minecraft -> minecraft.getOverlay() == null;
+            case "phase" -> {
+                String expected = requiredString(call.params, "value");
+                yield minecraft -> this.lifecycle(minecraft).get("phase").getAsString()
+                        .equals(expected);
+            }
             default -> throw new BridgeRpcException(
                     -32602,
                     "Unknown wait condition: " + condition
@@ -518,6 +888,15 @@ final class BridgeRuntime {
                 call.result
         ));
     }
+
+    private void waitFrames(PendingCall call) {
+        int frames = requiredInt(call.params, "frames");
+        if (frames < 0 || frames > 10_000) {
+            throw new BridgeRpcException(-32602, "frames must be from 0 to 10000");
+        }
+        this.frameWaiters.add(new FrameWaiter(this.frame + frames, call.result));
+    }
+
 
     private void updateWaiters(Minecraft minecraft) {
         this.waiters.removeIf(waiter -> {
@@ -594,7 +973,7 @@ final class BridgeRuntime {
         });
     }
 
-    private static boolean worldReady(Minecraft minecraft) {
+    private static boolean worldLoaded(Minecraft minecraft) {
         return minecraft.player != null
                 && minecraft.level != null
                 && minecraft.getSingleplayerServer() != null
@@ -603,6 +982,34 @@ final class BridgeRuntime {
                 minecraft.player.chunkPosition().z
         );
     }
+
+    private static boolean gameReady(Minecraft minecraft) {
+        return minecraft.isGameLoadFinished() && minecraft.getOverlay() == null;
+    }
+
+    private static boolean menuReady(Minecraft minecraft) {
+        return gameReady(minecraft)
+                && minecraft.level == null
+                && minecraft.player == null
+                && minecraft.screen != null
+                && !isLoadingScreen(minecraft.screen);
+    }
+
+    private static boolean worldReady(Minecraft minecraft) {
+        return gameReady(minecraft)
+                && worldLoaded(minecraft)
+                && !isLoadingScreen(minecraft.screen);
+    }
+
+    private static boolean isLoadingScreen(Object screen) {
+        return screen != null && LOADING_SCREENS.contains(screen.getClass().getSimpleName());
+    }
+
+    private static boolean matchesClass(Object value, String expected) {
+        return value != null && (value.getClass().getName().equals(expected)
+                || value.getClass().getSimpleName().equals(expected));
+    }
+
 
     private static net.minecraft.client.player.LocalPlayer requirePlayer(Minecraft minecraft) {
         if (minecraft.player == null) {
@@ -646,6 +1053,11 @@ final class BridgeRuntime {
         return params.get(key).getAsDouble();
     }
 
+    private static double optionalDouble(JsonObject params, String key, double fallback) {
+        return params.has(key) ? params.get(key).getAsDouble() : fallback;
+    }
+
+
     private static String optionalString(JsonObject params, String key, String fallback) {
         return params.has(key) ? params.get(key).getAsString() : fallback;
     }
@@ -681,6 +1093,29 @@ final class BridgeRuntime {
     ) {
     }
 
+    private record FrameWaiter(
+            long targetFrame,
+            CompletableFuture<JsonElement> result
+    ) {
+    }
+
+    private static final class InputSequence {
+        private final List<JsonObject> events;
+        private final CompletableFuture<JsonElement> result;
+        private int index;
+        private long nextTick;
+
+        private InputSequence(
+                List<JsonObject> events,
+                CompletableFuture<JsonElement> result
+        ) {
+            this.events = events;
+            this.result = result;
+        }
+    }
+
+
+
     private record ScheduledAction(long tick, Runnable action) {
     }
 
@@ -692,6 +1127,7 @@ final class BridgeRuntime {
         private final Difficulty difficulty;
         private final boolean allowCommands;
         private boolean submitted;
+        private long readyFrame = -1;
 
         private WorldCreation(
                 CompletableFuture<JsonElement> result,

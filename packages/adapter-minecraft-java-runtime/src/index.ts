@@ -29,15 +29,19 @@ const HMC_FILENAME = `headlessmc-launcher-${HMC_VERSION}.jar`;
 const HMC_URL = `https://github.com/3arthqu4ke/headlessmc/releases/download/${HMC_VERSION}/${HMC_FILENAME}`;
 export const MINECRAFT_CAPABILITIES = [
   'runtime.status',
+  'runtime.lifecycle',
   'runtime.stop',
   'world.create',
   'world.configure',
   'world.publish',
+  'world.inspect',
+  'block.inspect',
   'command.execute',
   'player.get',
   'player.list',
   'player.configure',
   'player.input',
+  'player.inventory',
   'entity.query',
   'entity.spawn',
   'entity.configure',
@@ -47,10 +51,15 @@ export const MINECRAFT_CAPABILITIES = [
   'gui.click',
   'gui.key',
   'gui.type',
+  'input.dispatch',
+  'input.state',
+  'window.resize',
   'screenshot.capture',
   'wait.ticks',
-  'wait.until'
+  'wait.until',
+  'wait.frames'
 ];
+
 
 export interface MinecraftLoaderSpec {
   id: string;
@@ -235,8 +244,7 @@ async function prepare(
     ...await backend.launchJava(
       backendJava,
       [
-        '-jar', backendHmc, '--command', 'launch', loader.profileRegex,
-        '-regex', '--retries', '20'
+        '-jar', backendHmc, '--command', 'launch', loader.profileRegex, '-regex'
       ],
       runtimeDirectory,
       { LIBGL_ALWAYS_SOFTWARE: '1' },
@@ -292,7 +300,9 @@ async function hasInstalledProfile(
 }
 
 async function clearStaleSession(context: AdapterContext): Promise<void> {
+  const stoppedFile = join(dirname(context.endpoint.tokenFile), 'stopped');
   if (!await exists(context.endpoint.tokenFile)) {
+    await rm(stoppedFile, { force: true });
     return;
   }
   if (await bridgeIsActive(context)) {
@@ -303,7 +313,8 @@ async function clearStaleSession(context: AdapterContext): Promise<void> {
   }
   await Promise.all([
     rm(context.endpoint.tokenFile, { force: true }),
-    rm(join(dirname(context.endpoint.tokenFile), 'port'), { force: true })
+    rm(join(dirname(context.endpoint.tokenFile), 'port'), { force: true }),
+    rm(stoppedFile, { force: true })
   ]);
 }
 
@@ -391,10 +402,14 @@ async function launch(
     throw new Error('Headless runtime did not provide a process ID');
   }
 
+  const stoppedFile = join(dirname(runtime.endpoint.tokenFile), 'stopped');
   const exited = new Promise<number>((resolveExit, reject) => {
     child.once('error', reject);
     child.once('exit', (code, signal) => {
-      resolveExit(code ?? (signal ? 128 : 1));
+      void exists(stoppedFile).then(
+        (expectedStop) => resolveExit(expectedStop ? 0 : (code ?? (signal ? 128 : 1))),
+        reject
+      );
     });
   });
   return {

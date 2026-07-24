@@ -21,6 +21,29 @@ describe('projectConfigSchema', () => {
   });
 });
 
+describe('RPC timeouts', () => {
+  it('applies defaults and accepts explicit long-running calls', () => {
+    const defaultStep = scenarioSchema.parse({
+      schemaVersion: 1,
+      name: 'default timeout',
+      steps: [{ call: 'world.create' }]
+    }).steps[0];
+    const longStep = scenarioSchema.parse({
+      schemaVersion: 1,
+      name: 'long timeout',
+      steps: [{ call: 'world.create', timeoutMs: 600_000 }]
+    }).steps[0];
+
+    expect(defaultStep?.timeoutMs).toBe(30_000);
+    expect(longStep?.timeoutMs).toBe(600_000);
+    expect(() => scenarioSchema.parse({
+      schemaVersion: 1,
+      name: 'invalid timeout',
+      steps: [{ call: 'world.create', timeoutMs: 600_001 }]
+    })).toThrow();
+  });
+});
+
 describe('scenarioSchema', () => {
   it('rejects unknown bridge calls', () => {
     expect(() => scenarioSchema.parse({

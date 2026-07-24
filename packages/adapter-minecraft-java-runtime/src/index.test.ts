@@ -29,6 +29,15 @@ describe('Minecraft Java runtime adapter', () => {
     expect(adapter.manifest.requirements.java).toBe(21);
     expect(adapter.manifest.capabilities).toContain('world.publish');
     expect(adapter.manifest.capabilities).toContain('player.list');
+    expect(adapter.manifest.capabilities).toContain('runtime.lifecycle');
+    expect(adapter.manifest.capabilities).toContain('wait.frames');
+    expect(adapter.manifest.capabilities).toContain('input.dispatch');
+    expect(adapter.manifest.capabilities).toContain('input.state');
+    expect(adapter.manifest.capabilities).toContain('world.inspect');
+    expect(adapter.manifest.capabilities).toContain('block.inspect');
+    expect(adapter.manifest.capabilities).toContain('player.get');
+    expect(adapter.manifest.capabilities).toContain('player.inventory');
+    expect(adapter.manifest.capabilities).toContain('window.resize');
   });
 
   it('rejects unknown loaders', () => {

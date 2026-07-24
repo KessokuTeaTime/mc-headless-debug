@@ -36,6 +36,11 @@ public final class MchdBridge {
 		RUNTIME.tick(minecraft);
 	}
 
+	public static void frame(Minecraft minecraft) {
+		RUNTIME.frame(minecraft);
+	}
+
+
 	public static void stop() {
 		BridgeServer current = server;
 		if (current != null) {

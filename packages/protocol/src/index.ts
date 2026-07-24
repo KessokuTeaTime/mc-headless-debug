@@ -49,11 +49,13 @@ export const rpcMethodSchema = z.string()
   .regex(/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/);
 export type RpcMethod = z.infer<typeof rpcMethodSchema>;
 
+export const rpcTimeoutSchema = z.int().positive().max(600_000).default(30_000);
+
 export const scenarioStepSchema = z.object({
   name: z.string().min(1).optional(),
   call: rpcMethodSchema,
   with: z.record(z.string(), z.unknown()).default({}),
-  timeoutMs: z.int().positive().default(30_000),
+  timeoutMs: rpcTimeoutSchema,
   saveAs: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).optional()
 });
 export type ScenarioStep = z.infer<typeof scenarioStepSchema>;
@@ -71,8 +73,10 @@ export const rpcRequestSchema = z.object({
   id: z.string().min(1),
   token: z.string().min(1),
   method: rpcMethodSchema,
-  params: z.record(z.string(), z.unknown()).default({})
+  params: z.record(z.string(), z.unknown()).default({}),
+  timeoutMs: rpcTimeoutSchema
 });
+
 export type RpcRequest = z.infer<typeof rpcRequestSchema>;
 
 export const rpcErrorSchema = z.object({

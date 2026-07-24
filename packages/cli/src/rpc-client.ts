@@ -8,6 +8,7 @@ import {
 } from '@mc-headless-debug/protocol';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const MAX_RPC_TIMEOUT_MS = 600_000;
 
 export class BridgeRpcError extends Error {
   public constructor(
@@ -39,6 +40,9 @@ export class RpcClient {
     params: Record<string, unknown> = {},
     timeoutMs = 30_000
   ): Promise<unknown> {
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_RPC_TIMEOUT_MS) {
+      throw new Error(`RPC timeout must be an integer from 1 to ${MAX_RPC_TIMEOUT_MS} ms`);
+    }
     const id = randomUUID();
     return new Promise((resolve, reject) => {
       const socket = createConnection({
@@ -70,7 +74,8 @@ export class RpcClient {
           id,
           token: this.token,
           method,
-          params
+          params,
+          timeoutMs
         })}\n`);
       });
       socket.on('data', (chunk) => {

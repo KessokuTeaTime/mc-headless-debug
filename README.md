@@ -28,7 +28,7 @@ It combines:
 
 The core engine is version-agnostic. It knows only adapter discovery, sessions, RPC, scenarios, capabilities, and artifacts. Minecraft versions, ModLoaders, mappings, Java versions, launchers, and game APIs are implemented by adapters.
 
-The TypeScript engine/protocol, CLI, scenario runner, MCP adapter, and agent skill are implemented. Fabric and NeoForge adapters for Minecraft 1.21.1 and 26.2 provide Linux/Xvfb, Docker, WSL, and macOS runtimes plus a shared control bridge for worlds, commands, players, entities, GUI input/inspection, screenshots, and deterministic waits.
+The TypeScript engine/protocol, CLI, scenario runner, MCP adapter, and agent skill are implemented. Fabric and NeoForge adapters for Minecraft 1.21.1 and 26.2 provide Linux/Xvfb, Docker, WSL, and macOS runtimes plus a shared control bridge for lifecycle readiness, worlds, commands, gameplay probes, GUI and raw input, window sizing, screenshots, and deterministic tick/frame waits. Current boundaries are documented in [`docs/protocol.md`](docs/protocol.md#current-minecraft-bridge-boundaries).
 
 The original CI prototype is proven on Fabric and NeoForge in [Faded Widgets run 29717600890](https://github.com/KessokuTeaTime/Faded-Widgets/actions/runs/29717600890). This repository includes its own adapter bridge smoke workflow for execution after upload.
 

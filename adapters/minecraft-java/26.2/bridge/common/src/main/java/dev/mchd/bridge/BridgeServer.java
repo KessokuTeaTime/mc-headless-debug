@@ -1,6 +1,7 @@
 package dev.mchd.bridge;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -39,9 +40,10 @@ import java.util.concurrent.TimeoutException;
 
 final class BridgeServer implements AutoCloseable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(MchdBridge.ID);
-	private static final Gson GSON = new Gson();
+	private static final Gson GSON = new GsonBuilder().serializeNulls().create();
 	private static final int MAX_REQUEST_BYTES = 1024 * 1024;
-	private static final long REQUEST_TIMEOUT_SECONDS = 120;
+	private static final int DEFAULT_REQUEST_TIMEOUT_MILLIS = 120_000;
+	private static final int MAX_REQUEST_TIMEOUT_MILLIS = 600_000;
 
 	private final ServerSocket socket;
 	private final ExecutorService clients;
@@ -226,7 +228,18 @@ final class BridgeServer implements AutoCloseable {
 					return;
 				}
 
-				client.setSoTimeout((int) TimeUnit.SECONDS.toMillis(REQUEST_TIMEOUT_SECONDS));
+				int timeoutMillis = optionalInt(
+						request,
+						"timeoutMs",
+						DEFAULT_REQUEST_TIMEOUT_MILLIS
+				);
+				if (timeoutMillis <= 0 || timeoutMillis > MAX_REQUEST_TIMEOUT_MILLIS) {
+					throw new BridgeRpcException(
+							-32600,
+							"timeoutMs must be from 1 to " + MAX_REQUEST_TIMEOUT_MILLIS
+					);
+				}
+				client.setSoTimeout(timeoutMillis);
 				String method = requiredString(request, "method");
 				JsonObject params = request.has("params")
 						? request.getAsJsonObject("params")
@@ -239,11 +252,8 @@ final class BridgeServer implements AutoCloseable {
 				writeResult(
 						writer,
 						id,
-						response.get(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+						response.get(timeoutMillis, TimeUnit.MILLISECONDS)
 				);
-				if ("runtime.stop".equals(method)) {
-					this.runtime.confirmStopResponse();
-				}
 			} catch (BridgeRpcException exception) {
 				writeError(writer, id, exception.code(), exception.getMessage());
 			} catch (ExecutionException exception) {
@@ -298,6 +308,20 @@ final class BridgeServer implements AutoCloseable {
 			throw new BridgeRpcException(-32600, "Missing string property: " + key);
 		}
 		return object.get(key).getAsString();
+	}
+
+	private static int optionalInt(JsonObject object, String key, int fallback) {
+		if (!object.has(key)) {
+			return fallback;
+		}
+		if (!object.get(key).isJsonPrimitive()) {
+			throw new BridgeRpcException(-32600, "Invalid integer property: " + key);
+		}
+		try {
+			return object.get(key).getAsInt();
+		} catch (NumberFormatException exception) {
+			throw new BridgeRpcException(-32600, "Invalid integer property: " + key);
+		}
 	}
 
 	private static void writeResult(
@@ -358,6 +382,14 @@ final class BridgeServer implements AutoCloseable {
 		}
 		this.clients.shutdownNow();
 		try {
+			Files.writeString(
+					this.tokenFile.resolveSibling("stopped"),
+					"runtime.stop\n",
+					StandardOpenOption.CREATE,
+					StandardOpenOption.TRUNCATE_EXISTING,
+					StandardOpenOption.WRITE
+			);
+
 			Files.deleteIfExists(this.tokenFile);
 			Files.deleteIfExists(this.portFile);
 			this.sessionLock.release();

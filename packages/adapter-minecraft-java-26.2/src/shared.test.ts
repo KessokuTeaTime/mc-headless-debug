@@ -10,6 +10,15 @@ describe('Minecraft 26.2 adapters', () => {
       expect(adapter.manifest.engineApi).toBe(1);
       expect(adapter.manifest.capabilities).toContain('gui.inspect');
       expect(adapter.manifest.capabilities).toContain('entity.spawn');
+      expect(adapter.manifest.capabilities).toContain('runtime.lifecycle');
+      expect(adapter.manifest.capabilities).toContain('wait.frames');
+      expect(adapter.manifest.capabilities).toContain('input.dispatch');
+      expect(adapter.manifest.capabilities).toContain('input.state');
+      expect(adapter.manifest.capabilities).toContain('world.inspect');
+      expect(adapter.manifest.capabilities).toContain('block.inspect');
+      expect(adapter.manifest.capabilities).toContain('player.get');
+      expect(adapter.manifest.capabilities).toContain('player.inventory');
+      expect(adapter.manifest.capabilities).toContain('window.resize');
     }
   );
 });
